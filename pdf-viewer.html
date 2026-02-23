@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Viewer - Mc Duffy Fish Hatchery</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Georgia', serif;
+            background: #1a1a1a;
+            color: #333;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: linear-gradient(135deg, #0b4f8c 0%, #186ba6 100%);
+            color: white;
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .header-title {
+            font-size: 1.4rem;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+        }
+
+        .document-name {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-left: 1rem;
+            border-left: 2px solid rgba(255, 255, 255, 0.5);
+            padding-left: 1rem;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .btn-back {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            padding: 0.6rem 1.5rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-back:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .btn-download {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            padding: 0.6rem 1.5rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-download:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .viewer-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .pdf-canvas-wrapper {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #2a2a2a;
+            overflow: auto;
+            position: relative;
+        }
+
+        .pdf-canvas-wrapper::-webkit-scrollbar {
+            width: 12px;
+        }
+
+        .pdf-canvas-wrapper::-webkit-scrollbar-track {
+            background: #333;
+        }
+
+        .pdf-canvas-wrapper::-webkit-scrollbar-thumb {
+            background: #0b4f8c;
+            border-radius: 6px;
+        }
+
+        .pdf-canvas-wrapper::-webkit-scrollbar-thumb:hover {
+            background: #186ba6;
+        }
+
+        .pdf-page {
+            margin: 20px auto;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            max-width: 95%;
+        }
+
+        .sidebar {
+            width: 250px;
+            background: #2a2a2a;
+            border-right: 1px solid #333;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
+        .sidebar::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .sidebar::-webkit-scrollbar-track {
+            background: #333;
+        }
+
+        .sidebar::-webkit-scrollbar-thumb {
+            background: #0b4f8c;
+            border-radius: 4px;
+        }
+
+        .sidebar-section {
+            margin-bottom: 2rem;
+        }
+
+        .sidebar-title {
+            color: #0b4f8c;
+            font-size: 0.9rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .page-list {
+            list-style: none;
+        }
+
+        .page-item {
+            background: #333;
+            margin-bottom: 0.5rem;
+            padding: 0.75rem;
+            border-radius: 5px;
+            cursor: pointer;
+            color: #ccc;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+
+        .page-item:hover {
+            background: #404040;
+            color: white;
+        }
+
+        .page-item.active {
+            background: #0b4f8c;
+            color: white;
+            border-left-color: #fff;
+        }
+
+        .document-info {
+            color: #999;
+            font-size: 0.8rem;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: #333;
+            border-radius: 5px;
+            border-left: 3px solid #0b4f8c;
+        }
+
+        .info-item {
+            margin-bottom: 0.5rem;
+        }
+
+        .info-label {
+            color: #0b4f8c;
+            font-weight: 600;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #999;
+        }
+
+        .spinner {
+            border: 3px solid #333;
+            border-top-color: #0b4f8c;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #c73542;
+            background: #2a2a2a;
+            padding: 2rem;
+            border-radius: 10px;
+            border: 2px solid #c73542;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+
+            .header-title {
+                font-size: 1.2rem;
+            }
+
+            .document-name {
+                display: none;
+            }
+
+            .btn-back, .btn-download {
+                padding: 0.5rem 1rem;
+                font-size: 0.9rem;
+            }
+        }
+
+        .toolbar {
+            background: #2a2a2a;
+            border-top: 1px solid #333;
+            padding: 1rem;
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-btn {
+            background: #0b4f8c;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .toolbar-btn:hover {
+            background: #186ba6;
+            transform: translateY(-2px);
+        }
+
+        .toolbar-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .page-counter {
+            color: #999;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <span>🐟</span>
+            <div class="header-title">Mc Duffy Fish Hatchery</div>
+            <div class="document-name" id="documentName">Document</div>
+        </div>
+        <div class="header-controls">
+            <button class="btn-download" id="downloadBtn">⬇️ Download</button>
+            <button class="btn-back" onclick="goBack()">← Back</button>
+        </div>
+    </header>
+
+    <div class="viewer-container">
+        <div class="sidebar">
+            <div class="document-info">
+                <div class="info-item">
+                    <span class="info-label">File:</span>
+                    <div id="infoName" style="word-break: break-word; font-size: 0.8rem; margin-top: 0.3rem;">-</div>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Size:</span>
+                    <div id="infoSize">-</div>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Uploaded:</span>
+                    <div id="infoDate">-</div>
+                </div>
+                <div class="info-item" id="infoPages" style="display: none;">
+                    <span class="info-label">Pages:</span>
+                    <div id="infoPagesCount">-</div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Pages</div>
+                <ul class="page-list" id="pageList"></ul>
+            </div>
+        </div>
+
+        <div class="pdf-canvas-wrapper" id="pdfViewer">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading PDF...</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="toolbar">
+        <button class="toolbar-btn" id="prevBtn" onclick="previousPage()">← Previous</button>
+        <select id="zoomSelect" class="toolbar-btn" style="cursor: pointer;">
+            <option value="50">50%</option>
+            <option value="75">75%</option>
+            <option value="100" selected>100%</option>
+            <option value="125">125%</option>
+            <option value="150">150%</option>
+            <option value="200">200%</option>
+        </select>
+        <span class="page-counter"><span id="currentPage">1</span> / <span id="totalPages">-</span></span>
+        <button class="toolbar-btn" id="nextBtn" onclick="nextPage()">Next →</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        // Initialize PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        let pdfDoc = null;
+        let currentPage = 1;
+        let pageRendering = false;
+        let pageNumPending = null;
+        let zoom = 100;
+        let currentPdfData = null;
+
+        // Get PDF data from localStorage
+        function loadPdf() {
+            const pdfData = localStorage.getItem('currentViewingPdf');
+            if (!pdfData) {
+                showError('No PDF found. Please return to the home page and try again.');
+                return;
+            }
+
+            try {
+                const pdfInfo = JSON.parse(pdfData);
+                currentPdfData = pdfInfo;
+                document.getElementById('documentName').textContent = pdfInfo.name;
+                document.getElementById('infoName').textContent = pdfInfo.name;
+                document.getElementById('infoSize').textContent = (pdfInfo.size / 1024 / 1024).toFixed(2) + ' MB';
+                document.getElementById('infoDate').textContent = pdfInfo.uploadDate;
+
+                // Convert data URL to ArrayBuffer
+                const bstr = atob(pdfInfo.data.split(',')[1]);
+                const n = bstr.length;
+                const u8arr = new Uint8Array(n);
+                for (let i = 0; i < n; i++) {
+                    u8arr[i] = bstr.charCodeAt(i);
+                }
+
+                pdfjsLib.getDocument(u8arr).promise.then(pdf => {
+                    pdfDoc = pdf;
+                    document.getElementById('totalPages').textContent = pdf.numPages;
+                    document.getElementById('infoPages').style.display = 'block';
+                    document.getElementById('infoPagesCount').textContent = pdf.numPages;
+                    renderPageList();
+                    renderPage(currentPage);
+                }).catch(err => {
+                    showError('Error loading PDF: ' + err.message);
+                });
+            } catch (err) {
+                showError('Error parsing PDF data: ' + err.message);
+            }
+        }
+
+        function renderPageList() {
+            const pageList = document.getElementById('pageList');
+            pageList.innerHTML = '';
+            for (let i = 1; i <= Math.min(pdfDoc.numPages, 50); i++) {
+                const li = document.createElement('li');
+                li.className = 'page-item';
+                if (i === currentPage) li.classList.add('active');
+                li.textContent = `Page ${i}`;
+                li.onclick = () => goToPage(i);
+                pageList.appendChild(li);
+            }
+        }
+
+        function renderPage(num) {
+            if (pageRendering) {
+                pageNumPending = num;
+                return;
+            }
+            pageRendering = true;
+
+            pdfDoc.getPage(num).then(page => {
+                const scale = zoom / 100;
+                const viewport = page.getViewport({ scale });
+
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                canvas.className = 'pdf-page';
+
+                const renderContext = {
+                    canvasContext: canvas.getContext('2d'),
+                    viewport: viewport
+                };
+
+                page.render(renderContext).promise.then(() => {
+                    const viewer = document.getElementById('pdfViewer');
+                    viewer.innerHTML = '';
+                    viewer.appendChild(canvas);
+
+                    pageRendering = false;
+                    if (pageNumPending !== null) {
+                        renderPage(pageNumPending);
+                        pageNumPending = null;
+                    }
+                }).catch(err => {
+                    showError('Error rendering page: ' + err.message);
+                    pageRendering = false;
+                });
+
+                // Update UI
+                document.getElementById('currentPage').textContent = num;
+                document.getElementById('prevBtn').disabled = num <= 1;
+                document.getElementById('nextBtn').disabled = num >= pdfDoc.numPages;
+                renderPageList();
+            }).catch(err => {
+                showError('Error loading page: ' + err.message);
+                pageRendering = false;
+            });
+        }
+
+        function nextPage() {
+            if (currentPage < pdfDoc.numPages) {
+                currentPage++;
+                renderPage(currentPage);
+            }
+        }
+
+        function previousPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                renderPage(currentPage);
+            }
+        }
+
+        function goToPage(num) {
+            if (num > 0 && num <= pdfDoc.numPages) {
+                currentPage = num;
+                renderPage(currentPage);
+            }
+        }
+
+        function goBack() {
+            window.history.back();
+        }
+
+        function showError(message) {
+            const viewer = document.getElementById('pdfViewer');
+            viewer.innerHTML = `<div class="error">⚠️ ${message}</div>`;
+        }
+
+        document.getElementById('zoomSelect').addEventListener('change', (e) => {
+            zoom = parseInt(e.target.value);
+            if (pdfDoc) {
+                renderPage(currentPage);
+            }
+        });
+
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            if (currentPdfData) {
+                const link = document.createElement('a');
+                link.href = currentPdfData.data;
+                link.download = currentPdfData.name;
+                link.click();
+            }
+        });
+
+        // Load PDF on page load
+        window.addEventListener('load', loadPdf);
+    </script>
+</body>
+</html>
