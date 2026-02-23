@@ -18,6 +18,17 @@
             height: 100vh;
             display: flex;
             flex-direction: column;
+            user-select: text;
+            position: relative;
+        }
+
+        body.dark-mode {
+            background: #0d0d0d;
+        }
+
+        body.light-mode {
+            background: #f5f5f5;
+            color: #333;
         }
 
         header {
@@ -28,6 +39,16 @@
             justify-content: space-between;
             align-items: center;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s;
+            z-index: 200;
+        }
+
+        header.hide-ui {
+            transform: translateY(-100%);
+        }
+
+        body.light-mode header {
+            background: linear-gradient(135deg, #0b4f8c 0%, #186ba6 100%);
         }
 
         .header-left {
@@ -108,6 +129,11 @@
             background: #2a2a2a;
             overflow: auto;
             position: relative;
+            user-select: text;
+        }
+
+        body.light-mode .pdf-canvas-wrapper {
+            background: #e8e8e8;
         }
 
         .pdf-canvas-wrapper::-webkit-scrollbar {
@@ -277,6 +303,17 @@
             justify-content: center;
             align-items: center;
             flex-wrap: wrap;
+            transition: transform 0.3s;
+            z-index: 200;
+        }
+
+        .toolbar.hide-ui {
+            transform: translateY(100%);
+        }
+
+        body.light-mode .toolbar {
+            background: #f5f5f5;
+            border-top: 1px solid #ddd;
         }
 
         .toolbar-btn {
@@ -300,9 +337,28 @@
             cursor: not-allowed;
         }
 
+        body.light-mode .toolbar-btn {
+            background: #0b4f8c;
+            color: white;
+        }
+
+        body.light-mode .toolbar-btn:hover {
+            background: #186ba6;
+        }
+
         .page-counter {
             color: #999;
             font-size: 0.9rem;
+        }
+
+        body.light-mode .page-counter {
+            color: #666;
+        }
+
+        .zoom-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
         }
     </style>
 </head>
@@ -312,10 +368,6 @@
             <span>🐟</span>
             <div class="header-title">Mc Duffy Fish Hatchery</div>
             <div class="document-name" id="documentName">Document</div>
-        </div>
-        <div class="header-controls">
-            <button class="btn-download" id="downloadBtn">⬇️ Download</button>
-            <button class="btn-back" onclick="goBack()">← Back</button>
         </div>
     </header>
 
@@ -356,15 +408,21 @@
 
     <div class="toolbar">
         <button class="toolbar-btn" id="prevBtn" onclick="previousPage()">← Previous</button>
-        <select id="zoomSelect" class="toolbar-btn" style="cursor: pointer;">
-            <option value="50">50%</option>
-            <option value="75">75%</option>
-            <option value="100" selected>100%</option>
-            <option value="125">125%</option>
-            <option value="150">150%</option>
-            <option value="200">200%</option>
-        </select>
+        <div class="zoom-controls">
+            <button class="toolbar-btn" id="zoomOut" onclick="zoomOut()">🔍−</button>
+            <select id="zoomSelect" class="toolbar-btn" style="cursor: pointer;">
+                <option value="50">50%</option>
+                <option value="75">75%</option>
+                <option value="100" selected>100%</option>
+                <option value="125">125%</option>
+                <option value="150">150%</option>
+                <option value="200">200%</option>
+            </select>
+            <button class="toolbar-btn" id="zoomIn" onclick="zoomIn()">🔍+</button>
+        </div>
         <span class="page-counter"><span id="currentPage">1</span> / <span id="totalPages">-</span></span>
+        <button class="toolbar-btn" id="fullscreenBtn" onclick="toggleFullScreen()">⛶ Fullscreen</button>
+        <button class="toolbar-btn" id="darkModeBtn" onclick="toggleDarkMode()">🌙 Dark</button>
         <button class="toolbar-btn" id="nextBtn" onclick="nextPage()">Next →</button>
     </div>
 
@@ -379,6 +437,11 @@
         let pageNumPending = null;
         let zoom = 100;
         let currentPdfData = null;
+        let autoHideTimer = null;
+        let isDarkMode = false;
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let lastDistance = 0;
 
         // Get PDF data from localStorage
         function loadPdf() {
@@ -396,6 +459,12 @@
                 document.getElementById('infoSize').textContent = (pdfInfo.size / 1024 / 1024).toFixed(2) + ' MB';
                 document.getElementById('infoDate').textContent = pdfInfo.uploadDate;
 
+                // Check if page is stored in localStorage with the PDF
+                const savedPage = localStorage.getItem('pdfCurrentPage_' + pdfInfo.id);
+                if (savedPage) {
+                    currentPage = parseInt(savedPage);
+                }
+
                 // Convert data URL to ArrayBuffer
                 const bstr = atob(pdfInfo.data.split(',')[1]);
                 const n = bstr.length;
@@ -409,8 +478,12 @@
                     document.getElementById('totalPages').textContent = pdf.numPages;
                     document.getElementById('infoPages').style.display = 'block';
                     document.getElementById('infoPagesCount').textContent = pdf.numPages;
-                    renderPageList();
                     renderPage(currentPage);
+                    // Defer non-critical setup for faster initial load
+                    setTimeout(() => {
+                        renderPageList();
+                        setupKeyboardHandlers();
+                    }, 50);
                 }).catch(err => {
                     showError('Error loading PDF: ' + err.message);
                 });
@@ -473,6 +546,11 @@
                 document.getElementById('prevBtn').disabled = num <= 1;
                 document.getElementById('nextBtn').disabled = num >= pdfDoc.numPages;
                 renderPageList();
+
+                // Save current page to localStorage
+                if (currentPdfData) {
+                    localStorage.setItem('pdfCurrentPage_' + currentPdfData.id, num);
+                }
             }).catch(err => {
                 showError('Error loading page: ' + err.message);
                 pageRendering = false;
@@ -500,8 +578,77 @@
             }
         }
 
-        function goBack() {
-            window.history.back();
+        function zoomIn() {
+            const newZoom = Math.min(zoom + 25, 300);
+            document.getElementById('zoomSelect').value = newZoom;
+            zoom = newZoom;
+            if (pdfDoc) renderPage(currentPage);
+        }
+
+        function zoomOut() {
+            const newZoom = Math.max(zoom - 25, 50);
+            document.getElementById('zoomSelect').value = newZoom;
+            zoom = newZoom;
+            if (pdfDoc) renderPage(currentPage);
+        }
+
+        function toggleFullScreen() {
+            const elem = document.documentElement;
+            if (!document.fullscreenElement) {
+                if (elem.requestFullscreen) {
+                    elem.requestFullscreen();
+                } else if (elem.webkitRequestFullscreen) {
+                    elem.webkitRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                }
+            }
+        }
+
+        function toggleDarkMode() {
+            isDarkMode = !isDarkMode;
+            if (isDarkMode) {
+                document.body.classList.add('dark-mode');
+                document.body.classList.remove('light-mode');
+                document.getElementById('darkModeBtn').textContent = '☀️ Light';
+                localStorage.setItem('darkMode', 'true');
+            } else {
+                document.body.classList.remove('dark-mode');
+                document.body.classList.add('light-mode');
+                document.getElementById('darkModeBtn').textContent = '🌙 Dark';
+                localStorage.setItem('darkMode', 'false');
+            }
+        }
+
+        function toggleUIVisibility() {
+            const header = document.querySelector('header');
+            const toolbar = document.querySelector('.toolbar');
+            
+            if (header.classList.contains('hide-ui')) {
+                header.classList.remove('hide-ui');
+                toolbar.classList.remove('hide-ui');
+            } else {
+                header.classList.add('hide-ui');
+                toolbar.classList.add('hide-ui');
+            }
+        }
+
+        function resetAutoHideTimer() {
+            if (autoHideTimer) clearTimeout(autoHideTimer);
+            
+            // Show UI
+            document.querySelector('header').classList.remove('hide-ui');
+            document.querySelector('.toolbar').classList.remove('hide-ui');
+            
+            // Hide after 5 seconds of inactivity
+            autoHideTimer = setTimeout(() => {
+                document.querySelector('header').classList.add('hide-ui');
+                document.querySelector('.toolbar').classList.add('hide-ui');
+            }, 5000);
         }
 
         function showError(message) {
@@ -509,24 +656,85 @@
             viewer.innerHTML = `<div class="error">⚠️ ${message}</div>`;
         }
 
-        document.getElementById('zoomSelect').addEventListener('change', (e) => {
-            zoom = parseInt(e.target.value);
-            if (pdfDoc) {
-                renderPage(currentPage);
+        // Consolidated event listeners
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                lastDistance = Math.sqrt(dx * dx + dy * dy);
             }
-        });
+            resetAutoHideTimer();
+        }, { passive: true });
 
-        document.getElementById('downloadBtn').addEventListener('click', () => {
-            if (currentPdfData) {
-                const link = document.createElement('a');
-                link.href = currentPdfData.data;
-                link.download = currentPdfData.name;
-                link.click();
+        document.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const currentDistance = Math.sqrt(dx * dx + dy * dy);
+                if (lastDistance > 0) {
+                    const ratio = currentDistance / lastDistance;
+                    if (ratio > 1.05) { zoomIn(); lastDistance = currentDistance; }
+                    else if (ratio < 0.95) { zoomOut(); lastDistance = currentDistance; }
+                }
             }
-        });
+        }, { passive: true });
 
-        // Load PDF on page load
-        window.addEventListener('load', loadPdf);
+        document.addEventListener('touchend', (e) => {
+            if (e.touches.length === 0) {
+                const diffX = touchStartX - e.changedTouches[0].clientX;
+                const diffY = touchStartY - e.changedTouches[0].clientY;
+                if (diffX > 50 && Math.abs(diffY) < 50) nextPage();
+                else if (diffX < -50 && Math.abs(diffY) < 50) previousPage();
+                else if (Math.abs(diffY) > 100 && Math.abs(diffX) < 50) toggleUIVisibility();
+            }
+        }, { passive: true });
+
+        document.addEventListener('mousemove', resetAutoHideTimer, { passive: true });
+        document.addEventListener('wheel', resetAutoHideTimer, { passive: true });
+
+        // Defer keyboard shortcuts and other event handlers until PDF loads
+        function setupKeyboardHandlers() {
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowRight') nextPage();
+                if (e.key === 'ArrowLeft') previousPage();
+                if (e.key === '+' || e.key === '=') zoomIn();
+                if (e.key === '-') zoomOut();
+                if (e.key === 'f') toggleFullScreen();
+                if (e.key === 'd') toggleDarkMode();
+                if (e.key === ' ') {
+                    e.preventDefault();
+                    toggleUIVisibility();
+                }
+            });
+
+            document.getElementById('zoomSelect').addEventListener('change', (e) => {
+                zoom = parseInt(e.target.value);
+                if (pdfDoc) renderPage(currentPage);
+            });
+        }
+
+        // Load dark mode preference and PDF
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                const darkModePref = localStorage.getItem('darkMode');
+                if (darkModePref === 'true') {
+                    isDarkMode = true;
+                    document.body.classList.add('dark-mode');
+                    document.getElementById('darkModeBtn').textContent = '☀️ Light';
+                }
+                loadPdf();
+            });
+        } else {
+            const darkModePref = localStorage.getItem('darkMode');
+            if (darkModePref === 'true') {
+                isDarkMode = true;
+                document.body.classList.add('dark-mode');
+                document.getElementById('darkModeBtn').textContent = '☀️ Light';
+            }
+            loadPdf();
+        }
     </script>
 </body>
 </html>

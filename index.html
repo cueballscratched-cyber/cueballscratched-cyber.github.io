@@ -271,6 +271,17 @@
             color: white;
         }
 
+        .pdf-actions .share-btn {
+            background: #186ba6;
+            color: white;
+            border: 1px solid #186ba6;
+        }
+
+        .pdf-actions .share-btn:hover {
+            background: #0b4f8c;
+            border-color: #0b4f8c;
+        }
+
         .empty-state {
             text-align: center;
             padding: 4rem 2rem;
@@ -398,6 +409,17 @@
 
             .upload-area {
                 padding: 2rem;
+            }
+
+            .pdf-actions {
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+
+            .pdf-actions button {
+                padding: 0.75rem;
+                font-size: 0.9rem;
+                width: 100%;
             }
         }
 
@@ -577,6 +599,7 @@
                         <p>${pdf.uploadDate}</p>
                         <div class="pdf-actions">
                             <button class="view-btn" onclick="viewPdf(${pdf.id})">View</button>
+                            <button class="share-btn" onclick="sharePdf(${pdf.id})">Share</button>
                             <button class="delete-btn" onclick="deletePdf(${pdf.id})">Delete</button>
                         </div>
                     </div>
@@ -604,6 +627,38 @@
                 savePdfs();
                 renderPdfs();
                 updateStats();
+            }
+        }
+
+        function sharePdf(id) {
+            const pdf = pdfs.find(p => p.id === id);
+            if (pdf) {
+                // Convert base64 data URL to blob
+                const byteString = atob(pdf.data.split(',')[1]);
+                const mimeString = pdf.data.split(',')[0].match(/:(.*?);/)[1];
+                const ab = new ArrayBuffer(byteString.length);
+                const ia = new Uint8Array(ab);
+                for (let i = 0; i < byteString.length; i++) {
+                    ia[i] = byteString.charCodeAt(i);
+                }
+                const blob = new Blob([ab], { type: mimeString });
+                
+                // Create a shareable link
+                const shareLink = URL.createObjectURL(blob);
+                
+                // Copy to clipboard
+                navigator.clipboard.writeText(shareLink).then(() => {
+                    alert(`PDF link copied to clipboard!\n\nYou can share this link directly to view or download the PDF.`);
+                }).catch(err => {
+                    // Fallback for older browsers
+                    const textarea = document.createElement('textarea');
+                    textarea.value = shareLink;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    alert(`PDF link copied to clipboard!\n\nYou can share this link directly to view or download the PDF.`);
+                });
             }
         }
 
