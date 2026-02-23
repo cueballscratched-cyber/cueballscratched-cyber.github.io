@@ -438,6 +438,87 @@
             width: 0%;
             transition: width 0.3s;
         }
+
+        .qr-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+        }
+
+        .qr-modal.active {
+            display: flex;
+        }
+
+        .qr-modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 3rem 2rem;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+
+        .qr-modal-header {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #0b4f8c;
+            margin-bottom: 2rem;
+        }
+
+        .qr-code-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            border: 2px solid #ecf0f5;
+            margin-bottom: 2rem;
+            display: inline-block;
+        }
+
+        .qr-code-container canvas {
+            max-width: 300px;
+            display: block;
+        }
+
+        .qr-modal-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .qr-modal-btn {
+            background: #0b4f8c;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .qr-modal-btn:hover {
+            background: #186ba6;
+            transform: translateY(-2px);
+        }
+
+        .qr-modal-btn.close {
+            background: #ecf0f5;
+            color: #0b4f8c;
+        }
+
+        .qr-modal-btn.close:hover {
+            background: #dceaf8;
+        }
     </style>
 </head>
 <body>
@@ -513,6 +594,22 @@
         <div class="modal-content">
             <span class="close-btn" onclick="closePdfModal()">&times;</span>
             <iframe id="pdfViewer" style="width: 100%; height: 600px; border: none;"></iframe>
+        </div>
+    </div>
+
+    <div class="qr-modal" id="qrModal">
+        <div class="qr-modal-content">
+            <div class="qr-modal-header">QR Code for Trail</div>
+            <div class="qr-code-container">
+                <canvas id="qrCodeCanvas"></canvas>
+            </div>
+            <p id="qrPdfName" style="margin-bottom: 1.5rem; color: #666; font-size: 0.95rem;"></p>
+            <div class="qr-modal-buttons">
+                <button class="qr-modal-btn" onclick="downloadQRCode()">📥 Download QR Code</button>
+                <button class="qr-modal-btn" onclick="printQRCode()">🖨️ Print QR Code</button>
+                <button class="qr-modal-btn close" onclick="closeQRModal()">Close</button>
+            </div>
+            <input type="hidden" id="qrUrl">
         </div>
     </div>
 
@@ -600,6 +697,7 @@
                         <div class="pdf-actions">
                             <button class="view-btn" onclick="viewPdf(${pdf.id})">View</button>
                             <button class="share-btn" onclick="sharePdf(${pdf.id})">Share</button>
+                            <button class="share-btn" style="background: #16a34a;" onclick="generateQRCode(${pdf.id})">QR Code</button>
                             <button class="delete-btn" onclick="deletePdf(${pdf.id})">Delete</button>
                         </div>
                     </div>
@@ -642,24 +740,91 @@
                     ia[i] = byteString.charCodeAt(i);
                 }
                 const blob = new Blob([ab], { type: mimeString });
-                
-                // Create a shareable link
-                const shareLink = URL.createObjectURL(blob);
-                
-                // Copy to clipboard
-                navigator.clipboard.writeText(shareLink).then(() => {
-                    alert(`PDF link copied to clipboard!\n\nYou can share this link directly to view or download the PDF.`);
-                }).catch(err => {
-                    // Fallback for older browsers
-                    const textarea = document.createElement('textarea');
-                    textarea.value = shareLink;
-                    document.body.appendChild(textarea);
-                    textarea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(textarea);
-                    alert(`PDF link copied to clipboard!\n\nYou can share this link directly to view or download the PDF.`);
-                });
+                const file = new File([blob], pdf.name, { type: mimeString });
+
+                // Try Web Share API first (works on mobile)
+                if (navigator.share) {
+                    navigator.share({
+                        title: 'Mc Duffy Fish Hatchery - ' + pdf.name,
+                        text: 'Check out this document from Mc Duffy Fish Hatchery',
+                        files: [file]
+                    }).catch(err => {
+                        if (err.name !== 'AbortError') {
+                            console.error('Share failed:', err);
+                            downloadPdf(pdf, blob);
+                        }
+                    });
+                } else {
+                    // Fallback: download the PDF
+                    downloadPdf(pdf, blob);
+                }
             }
+        }
+
+        function downloadPdf(pdf, blob) {
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.href = url;
+            link.download = pdf.name;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            alert(`PDF downloaded: ${pdf.name}\n\nYou can now share it with messaging apps, email, or other services.`);
+        }
+
+        function generateQRCode(id) {
+            const pdf = pdfs.find(p => p.id === id);
+            if (!pdf) return;
+
+            const baseUrl = window.location.origin + window.location.pathname;
+            const qrUrl = `${baseUrl}?viewpdf=${encodeURIComponent(pdf.id)}`;
+
+            const modal = document.getElementById('qrModal');
+            modal.classList.add('active');
+
+            QRCode.toCanvas(
+                document.getElementById('qrCodeCanvas'),
+                qrUrl,
+                { width: 300, margin: 2, color: { dark: '#0b4f8c', light: '#ffffff' } },
+                function(error) {
+                    if (error) {
+                        console.error('QR Code generation failed:', error);
+                        alert('Failed to generate QR code');
+                        modal.classList.remove('active');
+                    } else {
+                        document.getElementById('qrUrl').value = qrUrl;
+                        document.getElementById('qrPdfName').textContent = pdf.name;
+                    }
+                }
+            );
+        }
+
+        function downloadQRCode() {
+            const canvas = document.getElementById('qrCodeCanvas');
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL();
+            link.download = 'QR-Code-' + Date.now() + '.png';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function printQRCode() {
+            const canvas = document.getElementById('qrCodeCanvas');
+            const printWindow = window.open();
+            printWindow.document.write('<html><head><title>QR Code</title></head><body style="text-align:center;padding:2rem;">');
+            printWindow.document.write('<h1>Trail PDF QR Code</h1>');
+            printWindow.document.write('<p id="pdfName"></p>');
+            printWindow.document.write('<img src="' + canvas.toDataURL() + '" style="max-width:500px;margin:2rem 0;"/>');
+            printWindow.document.write('<p style="color:#666;font-size:0.9rem;margin-top:2rem;">Scan this code to view the PDF on the trail</p>');
+            printWindow.document.write('</body></html>');
+            printWindow.document.close();
+            setTimeout(() => printWindow.print(), 250);
+        }
+
+        function closeQRModal() {
+            document.getElementById('qrModal').classList.remove('active');
         }
 
         function updateStats() {
@@ -679,9 +844,28 @@
             }
         });
 
+        // Close QR modal when clicking outside
+        const qrModal = document.getElementById('qrModal');
+        qrModal.addEventListener('click', (e) => {
+            if (e.target === qrModal) {
+                closeQRModal();
+            }
+        });
+
         // Initialize
         renderPdfs();
         updateStats();
+
+        // Check if viewing a PDF from QR code
+        const urlParams = new URLSearchParams(window.location.search);
+        const pdfId = urlParams.get('viewpdf');
+        if (pdfId) {
+            const pdf = pdfs.find(p => p.id === parseInt(pdfId));
+            if (pdf) {
+                viewPdf(pdf.id);
+            }
+        }
     </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode.js/1.5.3/qrcode.min.js"></script>
 </body>
 </html>
